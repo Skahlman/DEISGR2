@@ -1,0 +1,7 @@
+package exlcm;
+
+struct heartbeat_t
+{
+    int64_t  timestamp;
+    int8_t  ID;
+}

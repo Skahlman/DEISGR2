@@ -1,0 +1,10 @@
+package exlcm;
+
+struct message_t
+{
+    int64_t  timestamp;
+    int8_t  ID;
+    string name;
+    boolean detectedObject;
+    int8_t mode;
+}

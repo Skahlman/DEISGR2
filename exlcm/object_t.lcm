@@ -1,0 +1,8 @@
+package exlcm;
+
+struct object_t
+{
+    int64_t  timestamp;
+    string name;
+    boolean detectedObject;
+}

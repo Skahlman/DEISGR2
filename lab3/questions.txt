@@ -1,0 +1,37 @@
+1.How do the messages look like in LCM?
+In LCM, messages are serialized into a binary format for efficient transmission over the network. 
+Each message is structured as a sequence of fields defined in an LCM schema (.lcm file) 
+These fields include various data types.
+
+Our LCM message for autonomous vehicle driving communication looks like this:
+
+struct message_t {
+    int64_t  timestamp;
+    int8_t  ID;
+    string name;
+    boolean detectedObject;
+    int8_t mode;
+}
+
+This schema defines a message with a timestamp, a vehicle id, its name, 
+whether an object was detected and the current mode.
+
+2. How do you represent time?
+Time is usually represented as a timestamp in messages. 
+The int64_t type is commonly used for nanosecond-precision timestamps, 
+especially when dealing with real-time systems.
+
+3. How well does the time match between the different parts of the systems (i.e. the
+different computing platforms)?
+
+4. What type of jitter do you get on the heartbeat signal (express in variance in
+seconds)?
+
+5. How does the jitter change with multiple vehicles (1, 2, 5, 10, and 20)? (To check this,
+simulate multiple vehicles with multiple processes)
+it increases, but not linearly
+
+6. What do you think is the cause of the jitter? 
+Network congestion, resource bottleneck, queueing delays
+ - Can it be reduced, if so how?
+time synchronization, message prioritization, increase computational resources
