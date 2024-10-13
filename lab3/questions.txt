@@ -23,13 +23,20 @@ especially when dealing with real-time systems.
 
 3. How well does the time match between the different parts of the systems (i.e. the
 different computing platforms)?
+it varies in the low ms range
 
 4. What type of jitter do you get on the heartbeat signal (express in variance in
 seconds)?
+500us
 
 5. How does the jitter change with multiple vehicles (1, 2, 5, 10, and 20)? (To check this,
 simulate multiple vehicles with multiple processes)
 it increases, but not linearly
+2 vehicles -> 800us
+5 vehicles -> 2ms
+10 vehicles -> 5ms
+20 vehicles -> 15ms
+
 
 6. What do you think is the cause of the jitter? 
 Network congestion, resource bottleneck, queueing delays
