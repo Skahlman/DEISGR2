@@ -1,0 +1,12 @@
+find_package(ament_cmake REQUIRED)
+find_package(rclcpp REQUIRED)
+find_package(geometry_msgs REQUIRED)
+find_package(sensor_msgs REQUIRED)
+find_package(nav_msgs REQUIRED)
+find_package(std_msgs REQUIRED)
+find_package(cv_bridge REQUIRED)
+find_package(OpenCV REQUIRED)
+
+add_executable(path_planner_node src/path_planner_node.cpp)
+ament_target_dependencies(path_planner_node rclcpp geometry_msgs sensor_msgs nav_msgs std_msgs)
+install(TARGETS path_planner_node DESTINATION lib/${PROJECT_NAME})

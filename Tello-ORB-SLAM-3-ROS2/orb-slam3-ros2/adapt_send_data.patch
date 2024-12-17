@@ -1,0 +1,147 @@
+diff --git a/src/monocular/monocular-slam-node.cpp b/src/monocular/monocular-slam-node.cpp
+index 5f083e9..faab378 100644
+--- a/src/monocular/monocular-slam-node.cpp
++++ b/src/monocular/monocular-slam-node.cpp
+@@ -1,36 +1,46 @@
+ #include "monocular-slam-node.hpp"
+ 
+-#include<opencv2/core/core.hpp>
++#include <opencv2/core/core.hpp>
++#include <cv_bridge/cv_bridge.h>
++#include <geometry_msgs/msg/pose_stamped.hpp>
++#include <sensor_msgs/msg/point_cloud2.hpp>
++#include <sensor_msgs/point_cloud2_iterator.hpp>
++#include <rclcpp/rclcpp.hpp>
+ 
+ using std::placeholders::_1;
+ 
+ MonocularSlamNode::MonocularSlamNode(ORB_SLAM3::System* pSLAM)
+-:   Node("ORB_SLAM3_ROS2")
++: Node("ORB_SLAM3_ROS2"), m_SLAM(pSLAM)
+ {
+-    m_SLAM = pSLAM;
+-    // std::cout << "slam changed" << std::endl;
++    // Subscriber to images
+     m_image_subscriber = this->create_subscription<ImageMsg>(
+         "camera",
+         10,
+-        std::bind(&MonocularSlamNode::GrabImage, this, std::placeholders::_1));
+-    std::cout << "slam changed" << std::endl;
++        std::bind(&MonocularSlamNode::GrabImage, this, _1));
++
++    // Publisher for camera pose
++    m_pose_publisher = this->create_publisher<geometry_msgs::msg::PoseStamped>("camera/pose", 10);
++
++    // Publisher for tracked map points
++    m_points_publisher = this->create_publisher<sensor_msgs::msg::PointCloud2>("orbslam/tracked_map_points", 10);
++
++    RCLCPP_INFO(this->get_logger(), "MonocularSlamNode initialized.");
+ }
+ 
+ MonocularSlamNode::~MonocularSlamNode()
+ {
+-    // Stop all threads
++    // Stop all threads and save keyframe trajectory
+     m_SLAM->Shutdown();
+-
+-    // Save camera trajectory
+     m_SLAM->SaveKeyFrameTrajectoryTUM("KeyFrameTrajectory.txt");
+ }
+ 
+ void MonocularSlamNode::GrabImage(const ImageMsg::SharedPtr msg)
+ {
+-    // Copy the ros image message to cv::Mat.
++    // Convert ROS image to cv::Mat
++    cv_bridge::CvImageConstPtr cvImPtr;
+     try
+     {
+-        m_cvImPtr = cv_bridge::toCvCopy(msg);
++        cvImPtr = cv_bridge::toCvCopy(msg);
+     }
+     catch (cv_bridge::Exception& e)
+     {
+@@ -38,6 +48,82 @@ void MonocularSlamNode::GrabImage(const ImageMsg::SharedPtr msg)
+         return;
+     }
+ 
+-    std::cout<<"one frame has been sent"<<std::endl;
+-    m_SLAM->TrackMonocular(m_cvImPtr->image, Utility::StampToSec(msg->header.stamp));
++    // Track monocular frame
++    double timestamp = Utility::StampToSec(msg->header.stamp);
++    Sophus::SE3f cameraPose = m_SLAM->TrackMonocular(cvImPtr->image, timestamp);
++
++    // If tracking fails, the returned pose might be empty. Check if valid.
++    // A valid Sophus::SE3f usually won't be the identity unless initialization failed.
++    // You can add a check here if desired.
++
++    // Publish pose
++    PublishPose(cameraPose, msg->header.stamp);
++
++    // Publish tracked map points
++    PublishMapPoints(msg->header.stamp);
++
++    RCLCPP_DEBUG(this->get_logger(), "Processed frame at time %f", timestamp);
+ }
++
++void MonocularSlamNode::PublishPose(const Sophus::SE3f &pose, const rclcpp::Time &stamp)
++{
++    geometry_msgs::msg::PoseStamped poseMsg;
++    poseMsg.header.stamp = stamp;
++    poseMsg.header.frame_id = "map"; // or "world", depending on your frame definition
++
++    // Convert SE3 to a Pose message
++    Eigen::Quaternionf q = pose.unit_quaternion();
++    Eigen::Vector3f t = pose.translation();
++
++    poseMsg.pose.position.x = t.x();
++    poseMsg.pose.position.y = t.y();
++    poseMsg.pose.position.z = t.z();
++    poseMsg.pose.orientation.x = q.x();
++    poseMsg.pose.orientation.y = q.y();
++    poseMsg.pose.orientation.z = q.z();
++    poseMsg.pose.orientation.w = q.w();
++
++    m_pose_publisher->publish(poseMsg);
++}
++
++void MonocularSlamNode::PublishMapPoints(const rclcpp::Time &stamp)
++{
++    std::vector<ORB_SLAM3::MapPoint*> mps = m_SLAM->GetTrackedMapPoints();
++
++    // Build a PointCloud2 message
++    sensor_msgs::msg::PointCloud2 pc2_msg;
++    pc2_msg.header.stamp = stamp;
++    pc2_msg.header.frame_id = "map"; // Same frame as pose
++    pc2_msg.height = 1;
++    pc2_msg.width = static_cast<uint32_t>(mps.size());
++    pc2_msg.is_bigendian = false;
++    pc2_msg.is_dense = false;
++
++    // We will store x,y,z as floats
++    sensor_msgs::PointCloud2Modifier modifier(pc2_msg);
++    modifier.setPointCloud2FieldsByString(1, "xyz");
++    modifier.resize(mps.size());
++
++    sensor_msgs::PointCloud2Iterator<float> iter_x(pc2_msg, "x");
++    sensor_msgs::PointCloud2Iterator<float> iter_y(pc2_msg, "y");
++    sensor_msgs::PointCloud2Iterator<float> iter_z(pc2_msg, "z");
++
++    for (size_t i = 0; i < mps.size(); ++i) {
++        ORB_SLAM3::MapPoint* mp = mps[i];
++        if (!mp || mp->isBad()) {
++            *iter_x = std::numeric_limits<float>::quiet_NaN();
++            *iter_y = std::numeric_limits<float>::quiet_NaN();
++            *iter_z = std::numeric_limits<float>::quiet_NaN();
++        } else {
++            Eigen::Vector3d Pw = mp->GetWorldPos();
++            *iter_x = static_cast<float>(Pw.x());
++            *iter_y = static_cast<float>(Pw.y());
++            *iter_z = static_cast<float>(Pw.z());
++        }
++
++        ++iter_x; ++iter_y; ++iter_z;
++    }
++
++    m_points_publisher->publish(pc2_msg);
++}
++
